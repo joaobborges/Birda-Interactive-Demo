@@ -1,10 +1,15 @@
 import { AnimatedWrapper } from "./AnimatedWrapper"
+import { CardSceneLoader } from "./CardSceneLoader"
 
 /**
  * GalleryFrame — decorative painting/gallery frame centered on cream background.
  * Serves as the visual container for the interactive Field Card prototype (Phase 2).
  * Styled after museum/gallery presentation: double-rule border, corner ornaments,
  * muted label beneath — editorial and refined.
+ *
+ * CardSceneLoader is a thin "use client" boundary that wraps the Three.js CardScene
+ * via next/dynamic with ssr:false. Next.js App Router requires dynamic() + ssr:false
+ * to live inside a Client Component — GalleryFrame itself stays a Server Component.
  */
 export function GalleryFrame() {
   return (
@@ -56,47 +61,9 @@ export function GalleryFrame() {
             }}
           >
 
-            {/* Prototype placeholder content area */}
-            <div
-              className="w-full flex flex-col items-center justify-center gap-6"
-              style={{ minHeight: "400px" }}
-            >
-              {/* Placeholder bird silhouette mark */}
-              <div className="flex flex-col items-center gap-4">
-                <svg
-                  width="48"
-                  height="48"
-                  viewBox="0 0 48 48"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="text-near-black/15"
-                  aria-hidden="true"
-                >
-                  {/* Abstract bird form — minimal, editorial */}
-                  <path
-                    d="M8 32 C12 20, 20 16, 28 18 C32 14, 40 12, 42 16 C38 18, 34 20, 32 24 C36 24, 40 22, 42 24 C38 28, 30 28, 26 26 C22 30, 16 36, 12 38 Z"
-                    fill="currentColor"
-                  />
-                  <circle cx="38" cy="14" r="2" fill="currentColor" />
-                </svg>
-
-                <div className="flex flex-col items-center gap-1 text-center">
-                  <p className="font-serif text-near-black/25 text-lg">
-                    Interactive demo
-                  </p>
-                  <p className="font-sans text-near-black/20 text-sm tracking-wide">
-                    The Field Card arrives in Phase 2
-                  </p>
-                </div>
-              </div>
-
-              {/* Decorative rule */}
-              <div className="w-16 border-t border-near-black/10" />
-
-              {/* Species name placeholder — like a museum label */}
-              <p className="font-serif italic text-near-black/20 text-base">
-                Alcedo atthis
-              </p>
+            {/* Three.js card scene — explicit height required for canvas to receive dimensions */}
+            <div className="w-full" style={{ height: "520px" }}>
+              <CardSceneLoader />
             </div>
 
           </div>
