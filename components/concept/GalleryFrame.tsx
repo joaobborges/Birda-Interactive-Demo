@@ -1,3 +1,7 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import { AnimatedWrapper } from "./AnimatedWrapper"
 import { CardSceneLoader } from "./CardSceneLoader"
 
@@ -7,11 +11,21 @@ import { CardSceneLoader } from "./CardSceneLoader"
  * Styled after museum/gallery presentation: double-rule border, corner ornaments,
  * muted label beneath — editorial and refined.
  *
- * CardSceneLoader is a thin "use client" boundary that wraps the Three.js CardScene
- * via next/dynamic with ssr:false. Next.js App Router requires dynamic() + ssr:false
- * to live inside a Client Component — GalleryFrame itself stays a Server Component.
+ * Phase 2 Plan 03: converted to "use client" to hold flip callback state and
+ * affordance hint visibility. CardSceneLoader forwards onReady so the flip button
+ * can trigger the spring-driven flip animation.
  */
 export function GalleryFrame() {
+  const [flipFn, setFlipFn] = useState<(() => void) | null>(null)
+  const [showHint, setShowHint] = useState(true)
+
+  // Fade out hint permanently after first drag interaction
+  useEffect(() => {
+    const handler = () => setShowHint(false)
+    window.addEventListener("card-first-interaction", handler)
+    return () => window.removeEventListener("card-first-interaction", handler)
+  }, [])
+
   return (
     <section
       id="card-demo"
@@ -52,9 +66,9 @@ export function GalleryFrame() {
             <path d="M0 18 L18 18 L18 0" stroke="currentColor" strokeWidth="1" fill="none"/>
           </svg>
 
-          {/* Inner frame — inset double-rule effect */}
+          {/* Inner frame — inset double-rule effect, relative for flip button positioning */}
           <div
-            className="w-full"
+            className="relative w-full"
             style={{
               border: "1px solid rgba(26,26,26,0.08)",
               padding: "40px 32px",
@@ -63,11 +77,39 @@ export function GalleryFrame() {
 
             {/* Three.js card scene — explicit height required for canvas to receive dimensions */}
             <div className="w-full" style={{ height: "520px" }}>
-              <CardSceneLoader />
+              <CardSceneLoader
+                onReady={(controls) => setFlipFn(() => controls.flip)}
+              />
             </div>
+
+            {/* Flip button — subtle affordance at bottom-right of inner frame */}
+            <button
+              onClick={() => flipFn?.()}
+              className="absolute -bottom-4 -right-4 w-8 h-8 rounded-full bg-near-black/10 hover:bg-near-black/20 flex items-center justify-center transition-colors"
+              aria-label="Flip card"
+              title="Flip card"
+            >
+              {/* Two-arrow rotate icon */}
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-near-black/50">
+                <path d="M2 8h12M11 5l3 3-3 3M5 11L2 8l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
 
           </div>
         </div>
+
+        {/* Drag-to-explore affordance hint — fades out after first interaction */}
+        <AnimatePresence>
+          {showHint && (
+            <motion.p
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.7 } }}
+              className="text-center text-xs text-near-black/30 mt-4 font-sans tracking-wide"
+            >
+              Drag to explore
+            </motion.p>
+          )}
+        </AnimatePresence>
 
         {/* Frame caption beneath */}
         <p className="font-sans text-xs text-near-black/25 mt-6 tracking-widest uppercase">
