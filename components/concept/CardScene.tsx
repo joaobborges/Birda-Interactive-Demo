@@ -75,8 +75,8 @@ export function CardScene({ onReady }: CardSceneProps) {
     scene.add(fillLight)
 
     // --- Card geometry ---
-    // Front face uses 64x64 subdivision for vertex displacement
-    const frontGeometry = new THREE.PlaneGeometry(2.5, 3.5, 64, 64)
+    // Front face uses 200x200 subdivision for fine topographic displacement
+    const frontGeometry = new THREE.PlaneGeometry(2.5, 3.5, 200, 200)
     // Back face has no displacement — keep minimal geometry
     const cardGeometry = new THREE.PlaneGeometry(2.5, 3.5)
 
@@ -225,7 +225,7 @@ export function CardScene({ onReady }: CardSceneProps) {
           rc.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
           const hits = rc.intersectObject(frontMesh)
           const uv = hits.length > 0 ? hits[0].uv : null
-          const overStrip = uv ? uv.y >= 0.48 && uv.y <= 0.62 : false
+          const overStrip = uv ? uv.y >= 0.38 && uv.y <= 0.52 : false
           if (overStrip !== isHoveringStrip) {
             isHoveringStrip = overStrip
             renderer.domElement.style.cursor = overStrip ? "pointer" : "grab"
@@ -313,7 +313,7 @@ export function CardScene({ onReady }: CardSceneProps) {
 
       // Play strip is approximately 40-50% from top in UV space
       // (UV Y=0 is bottom, so strip at ~0.50-0.60 in UV)
-      if (uv.y >= 0.48 && uv.y <= 0.62) {
+      if (uv.y >= 0.38 && uv.y <= 0.52) {
         if (!audioManager) {
           // First click: create AudioManager (gesture-gated AudioContext creation)
           audioManager = new AudioManager()
@@ -560,6 +560,8 @@ export function CardScene({ onReady }: CardSceneProps) {
           uFreqTex: { value: freqTexture },
           uTime: { value: 0.0 },
           uBlend: { value: 0.0 },
+          uLayers: { value: 8.0 },
+          uStrength: { value: 0.225 },
         },
         vertexShader: VERTEX_SHADER,
         fragmentShader: FRAGMENT_SHADER,
@@ -588,6 +590,7 @@ export function CardScene({ onReady }: CardSceneProps) {
       // Dispose audio resources
       audioManager?.dispose()
       audioManager = null
+
 
       renderer.domElement.removeEventListener("pointerdown", onPointerDown)
       renderer.domElement.removeEventListener("pointermove", onPointerMove)

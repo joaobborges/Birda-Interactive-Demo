@@ -1,80 +1,77 @@
 /**
  * shaderSources.ts — GLSL shader source strings for the Birda card front face.
  *
- * VERTEX_SHADER: Luminance-driven vertex displacement with idle breathing and
- * audio-reactive ripple. Uses GLSL ES 1.0 (no glslVersion: THREE.GLSL3 set).
- * Three.js r183 handles WebGL2 translation automatically.
+ * Inspired by sabosugi "Pixels as Frequencies" — luminance-driven topographic
+ * displacement with layer quantization. Audio frequency data modulates the
+ * displacement strength per frame.
  *
- * FRAGMENT_SHADER: Pure pass-through — samples uBirdTex at vUv. No color
- * manipulation per locked project decision (Phase 3 CONTEXT.md).
+ * VERTEX_SHADER: Quantized luminance displacement along normal + audio modulation.
+ * FRAGMENT_SHADER: Pure pass-through — natural colors preserved.
  */
 
 /**
- * Vertex shader — applies luminance-based z-displacement to the bird illustration.
+ * Vertex shader — "Pixels as Frequencies" topographic displacement.
  *
  * Uniforms:
- *   uBirdTex  — CanvasTexture of the drawn card front (bird illustration)
- *   uFreqTex  — 1×64 DataTexture (RGBA, UnsignedByte) of audio frequency bins
- *   uTime     — accumulated elapsed time in seconds (incremented by dt)
- *   uBlend    — 0.0 = idle breathing only, 1.0 = full audio-reactive
- *
- * Zone mask: only the top 50% of the card (UV Y > 0.5, i.e. the bird zone)
- * receives displacement. Play strip and species info remain flat and readable.
+ *   uBirdTex  — CanvasTexture of the drawn card front
+ *   uFreqTex  — 1×64 DataTexture of audio frequency bins
+ *   uTime     — accumulated elapsed time in seconds
+ *   uBlend    — 0.0 = static (no displacement), 1.0 = full audio-reactive
+ *   uLayers   — number of quantization layers (topographic bands)
+ *   uStrength — displacement magnitude
  */
 export const VERTEX_SHADER = /* glsl */ `
   uniform sampler2D uBirdTex;
   uniform sampler2D uFreqTex;
   uniform float uTime;
   uniform float uBlend;
+  uniform float uLayers;
+  uniform float uStrength;
 
   varying vec2 vUv;
+
+  float getLuminance(vec3 color) {
+    return dot(color, vec3(0.299, 0.587, 0.114));
+  }
 
   void main() {
     vUv = uv;
 
-    // Sample bird illustration at this vertex's UV position
     vec4 birdColor = texture2D(uBirdTex, uv);
+    float brightness = getLuminance(birdColor.rgb);
 
-    // Extract luminance using BT.601 coefficients
-    // Bright chest/beak pixels produce higher lum → displace more
-    float lum = dot(birdColor.rgb, vec3(0.299, 0.587, 0.114));
+    // Invert: dark pixels (the bird) extrude, light pixels (background) stay flat
+    float darkness = 1.0 - brightness;
 
-    // Zone mask — only bird zone (top 50% of card) displaces
-    // UV Y=0 is bottom, Y=1 is top; step(0.5, uv.y) = 1.0 when uv.y >= 0.5
-    float zoneMask = step(0.5, uv.y);
+    // Kill displacement on near-white areas (background, light patches)
+    // smoothstep fades out displacement above ~0.75 brightness
+    float birdMask = smoothstep(0.0, 0.35, darkness);
 
-    // ---- Idle breathing: 3 overlapping sine waves ----
-    // Primary cycle ~3-4 seconds, layered for organic, non-mechanical feel
-    float idle =
-      sin(uTime * 1.7 + uv.x * 3.14) * 0.5 +
-      sin(uTime * 1.1 + uv.y * 2.5)  * 0.3 +
-      sin(uTime * 2.3 + (uv.x + uv.y) * 4.0) * 0.2;
+    // Quantize into discrete layers (topographic terracing)
+    float stepped = floor(darkness * uLayers) / uLayers;
+    float elevation = mix(stepped, darkness, 0.6) * birdMask;
 
-    // Scale idle displacement: ~2-3px at card scale (0.008 world units)
-    float idleDisp = idle * lum * 0.008;
-
-    // ---- Audio-reactive displacement ----
-    // Sample frequency bin matching this vertex's X position
+    // Audio frequency modulation — frequency bin mapped to X position
     float freqVal = texture2D(uFreqTex, vec2(uv.x, 0.5)).r;
+    // Combine base elevation with audio energy
+    float audioBoost = 1.0 + freqVal * 1.5;
 
-    // Sample neighboring bin for lateral drift (organic wobble on x-axis)
-    float freqNeighbor = texture2D(uFreqTex, vec2(uv.x + 0.02, 0.5)).r;
+    // Zone mask — only bird illustration zone (top ~50%) displaces
+    // Soft fade prevents hard seam at play strip boundary
+    float zoneMask = smoothstep(0.48, 0.58, uv.y);
 
-    // Peak audio displacement: ~5-8px at card scale (0.02 world units)
-    float audioDisp = freqVal * lum * 0.02;
+    // Edge fade — reduce displacement near card edges to prevent overflow
+    float edgeX = smoothstep(0.0, 0.08, uv.x) * smoothstep(1.0, 0.92, uv.x);
+    float edgeY = smoothstep(0.48, 0.58, uv.y) * smoothstep(1.0, 0.92, uv.y);
+    float edgeMask = edgeX * edgeY;
 
-    // Blend idle and audio displacement based on uBlend
-    float zDisp = mix(idleDisp, audioDisp, uBlend) * zoneMask;
+    // Final displacement: elevation × strength × audio × masks × blend
+    float disp = elevation * uStrength * audioBoost * edgeMask * uBlend;
 
-    // Lateral x-axis drift based on neighboring frequency difference
-    float xDrift = (freqNeighbor - freqVal) * lum * 0.004 * uBlend * zoneMask;
+    // Displace along normal (Z for a flat plane)
+    vec3 newPos = position + normal * disp;
 
-    // Apply displacement to vertex position
-    vec3 displaced = position;
-    displaced.z += zDisp;
-    displaced.x += xDrift;
-
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
   }
 `
 

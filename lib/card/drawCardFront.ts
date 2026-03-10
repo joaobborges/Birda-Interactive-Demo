@@ -68,7 +68,8 @@ export async function drawCardFront(
     const drawW = imgW * scale
     const drawH = imgH * scale
     const offsetX = 16 + (zoneW - drawW) / 2
-    const offsetY = 16 + (zoneH - drawH) / 2
+    // Align to top of zone so the bird's face/head is visible (not center-cropped)
+    const offsetY = 16
     ctx.drawImage(birdImage, offsetX, offsetY, drawW, drawH)
   } else {
     // Placeholder when no bird image is available
