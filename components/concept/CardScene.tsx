@@ -6,6 +6,8 @@ import { drawCardFront } from "@/lib/card/drawCardFront"
 import { drawCardBack } from "@/lib/card/drawCardBack"
 import { stepSpring, type SpringState } from "@/lib/card/springPhysics"
 import { VERTEX_SHADER, FRAGMENT_SHADER } from "@/lib/card/shaderSources"
+import { AudioManager } from "@/lib/card/audioManager"
+import { updateFreqTexture } from "@/lib/card/uniformBridge"
 
 /**
  * CardScene — Client-only Three.js scene for the Birda Field Card prototype.
@@ -163,6 +165,28 @@ export function CardScene({ onReady }: CardSceneProps) {
     let cachedBirdImg: HTMLImageElement | null = null
 
     // -----------------------------------------------------------------------
+    // Audio state — AudioManager wired in Task 1 of Plan 02
+    // -----------------------------------------------------------------------
+    let audioManager: AudioManager | null = null
+    let uBlendValue = 0
+    let isAudioPlaying = false // tracks icon/glow state for canvas redraw
+
+    // Blend rates: in 0.3s, out 2.0s (locked decision)
+    const BLEND_IN_RATE = 1.0 / 0.3
+    const BLEND_OUT_RATE = 1.0 / 2.0
+
+    /**
+     * Redraw front canvas with updated play/pause icon state.
+     * Only called on state transitions (not every frame) to minimise canvas cost.
+     */
+    function redrawFrontCanvas(playing: boolean) {
+      if (!frontCanvas || !frontTexture) return
+      drawCardFront(frontCanvas, cachedBirdImg, playing).then(() => {
+        if (frontTexture) frontTexture.needsUpdate = true
+      })
+    }
+
+    // -----------------------------------------------------------------------
     // Pointer event handlers
     // -----------------------------------------------------------------------
 
@@ -290,7 +314,20 @@ export function CardScene({ onReady }: CardSceneProps) {
       // Play strip is approximately 40-50% from top in UV space
       // (UV Y=0 is bottom, so strip at ~0.50-0.60 in UV)
       if (uv.y >= 0.48 && uv.y <= 0.62) {
-        pulsePlayStrip()
+        if (!audioManager) {
+          // First click: create AudioManager (gesture-gated AudioContext creation)
+          audioManager = new AudioManager()
+          audioManager.onStateChange = (state) => {
+            const playing = state === "playing"
+            if (playing !== isAudioPlaying) {
+              isAudioPlaying = playing
+              redrawFrontCanvas(playing)
+            }
+          }
+          audioManager.init().then(() => audioManager?.toggle()).catch(console.error)
+        } else {
+          audioManager.toggle()
+        }
       }
     }
 
@@ -322,7 +359,7 @@ export function CardScene({ onReady }: CardSceneProps) {
 
       setTimeout(() => {
         if (!frontCanvas || !frontTexture) return
-        drawCardFront(frontCanvas, null).then(() => {
+        drawCardFront(frontCanvas, cachedBirdImg, isAudioPlaying).then(() => {
           if (frontTexture) frontTexture.needsUpdate = true
         })
       }, 250)
@@ -372,6 +409,31 @@ export function CardScene({ onReady }: CardSceneProps) {
         shaderMaterial.uniforms.uTime.value += dt
       }
 
+      // ---- Audio-reactive shader updates ----
+      if (audioManager && shaderMaterial) {
+        const audioIsPlaying = audioManager.isPlaying()
+
+        // Determine blend target and rate
+        const blendTarget = audioIsPlaying ? 1.0 : 0.0
+        const blendRate = audioIsPlaying ? BLEND_IN_RATE : BLEND_OUT_RATE
+
+        // Smooth lerp: clamp to avoid overshoot on large dt
+        uBlendValue += (blendTarget - uBlendValue) * Math.min(blendRate * dt, 1.0)
+
+        // Clamp near zero to prevent micro-fluctuations
+        if (uBlendValue < 0.001 && blendTarget === 0.0) {
+          uBlendValue = 0.0
+        }
+
+        shaderMaterial.uniforms.uBlend.value = uBlendValue
+
+        // Update freqTexture when playing or during blend-out tail
+        // (blend-out uses actual diminishing data rather than frozen values)
+        if (audioIsPlaying || uBlendValue > 0.001) {
+          updateFreqTexture(freqData, freqTexture, audioManager)
+        }
+      }
+
       if (!isDragging) {
         // Step springs toward their targets
         springX = stepSpring(springX, dt)
@@ -404,13 +466,13 @@ export function CardScene({ onReady }: CardSceneProps) {
       const glowChanged = Math.abs(stripGlowAlpha - prevGlow) > 0.02
       if (frontCanvas && frontTexture && glowChanged) {
         if (stripGlowAlpha < 0.01) {
-          // Clean exit — redraw without glow
+          // Clean exit — redraw without glow, preserving audio icon state
           stripGlowAlpha = 0
-          drawCardFront(frontCanvas, cachedBirdImg).then(() => {
+          drawCardFront(frontCanvas, cachedBirdImg, isAudioPlaying).then(() => {
             if (frontTexture) frontTexture.needsUpdate = true
           })
         } else {
-          drawCardFront(frontCanvas, cachedBirdImg).then(() => {
+          drawCardFront(frontCanvas, cachedBirdImg, isAudioPlaying).then(() => {
             if (!frontCanvas || !frontTexture) return
             const fCtx2 = frontCanvas.getContext("2d")
             if (!fCtx2) return
@@ -522,6 +584,10 @@ export function CardScene({ onReady }: CardSceneProps) {
       cancelled = true
       cancelAnimationFrame(animFrameId)
       resizeObserver.disconnect()
+
+      // Dispose audio resources
+      audioManager?.dispose()
+      audioManager = null
 
       renderer.domElement.removeEventListener("pointerdown", onPointerDown)
       renderer.domElement.removeEventListener("pointermove", onPointerMove)

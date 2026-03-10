@@ -3,7 +3,7 @@
  *
  * Draws three zones on a 500×700 logical pixel canvas (scaled by DPR for Retina):
  *   - Top 50% (0–350): Bird illustration
- *   - Middle 10% (350–420): Play strip with gold triangle icon
+ *   - Middle 10% (350–420): Play strip with gold triangle icon (or pause bars when playing)
  *   - Bottom 40% (420–700): Species info with typography
  *
  * Visual style: forest green background (#1a3a2a), gold border + dividers (#c9a84c),
@@ -11,10 +11,14 @@
  *
  * IMPORTANT: Call only after `await document.fonts.ready` to ensure Playfair Display
  * and Inter are available in the canvas context.
+ *
+ * @param isPlaying - When true, draws pause bars + warm gold tint on strip;
+ *                    when false (default), draws play triangle.
  */
 export async function drawCardFront(
   canvas: HTMLCanvasElement,
-  birdImage: HTMLImageElement | null
+  birdImage: HTMLImageElement | null,
+  isPlaying: boolean = false
 ): Promise<void> {
   const DPR = Math.min(window.devicePixelRatio || 1, 2)
   canvas.width = 500 * DPR
@@ -93,18 +97,35 @@ export async function drawCardFront(
   ctx.fillStyle = "#0f2318"
   ctx.fillRect(0, 350, W, 70)
 
-  // Centered gold play triangle
-  // Equilateral triangle with side ~16px, centered at (250, 385)
-  const triX = 250
-  const triY = 385
-  const triSize = 9 // half the base
-  ctx.fillStyle = "#c9a84c"
-  ctx.beginPath()
-  ctx.moveTo(triX - triSize, triY - triSize)
-  ctx.lineTo(triX - triSize, triY + triSize)
-  ctx.lineTo(triX + triSize * 1.5, triY)
-  ctx.closePath()
-  ctx.fill()
+  if (isPlaying) {
+    // Warm gold tint overlay during playback — subtle glow effect
+    ctx.fillStyle = "rgba(245, 208, 128, 0.15)"
+    ctx.fillRect(0, 350, W, 70)
+
+    // Pause bars: two vertical gold rectangles centered at (250, 385)
+    const barW = 4
+    const barH = 18
+    const barY = 385 - barH / 2
+    const gapHalf = 5
+    ctx.fillStyle = "#c9a84c"
+    // Left bar
+    ctx.fillRect(250 - gapHalf - barW, barY, barW, barH)
+    // Right bar
+    ctx.fillRect(250 + gapHalf, barY, barW, barH)
+  } else {
+    // Centered gold play triangle
+    // Equilateral triangle with side ~16px, centered at (250, 385)
+    const triX = 250
+    const triY = 385
+    const triSize = 9 // half the base
+    ctx.fillStyle = "#c9a84c"
+    ctx.beginPath()
+    ctx.moveTo(triX - triSize, triY - triSize)
+    ctx.lineTo(triX - triSize, triY + triSize)
+    ctx.lineTo(triX + triSize * 1.5, triY)
+    ctx.closePath()
+    ctx.fill()
+  }
   ctx.restore()
 
   // --- 6. Gold divider below play strip (y=420) ---
