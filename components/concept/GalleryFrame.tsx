@@ -34,13 +34,16 @@ export function GalleryFrame() {
       <AnimatedWrapper className="w-full flex flex-col items-center">
 
         {/* Frame label above */}
-        <p className="font-serif text-xs tracking-[0.25em] uppercase text-near-black/30 mb-8">
+        <p className="font-serif text-xs tracking-[0.25em] uppercase text-near-black/30 mb-2">
           Field Card No. 001
+        </p>
+        <p className="font-sans text-xs text-near-black/25 mb-8 tracking-widest uppercase">
+          Common Kingfisher · Birda Collection
         </p>
 
         {/* Outer frame — the "painting" container */}
         <div
-          className="relative w-full max-w-xl"
+          className="relative w-full max-w-3xl"
           style={{
             /* Outer border: thin rule in near-black/20 */
             border: "1px solid rgba(26,26,26,0.15)",
@@ -76,7 +79,7 @@ export function GalleryFrame() {
           >
 
             {/* Three.js card scene — explicit height required for canvas to receive dimensions */}
-            <div className="w-full" style={{ height: "520px" }}>
+            <div className="w-full" style={{ height: "1040px" }}>
               <CardSceneLoader
                 onReady={(controls) => setFlipFn(() => controls.flip)}
               />
@@ -111,10 +114,6 @@ export function GalleryFrame() {
           )}
         </AnimatePresence>
 
-        {/* Frame caption beneath */}
-        <p className="font-sans text-xs text-near-black/25 mt-6 tracking-widest uppercase">
-          Common Kingfisher · Birda Collection
-        </p>
 
       </AnimatedWrapper>
     </section>

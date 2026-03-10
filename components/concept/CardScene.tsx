@@ -42,7 +42,7 @@ export function CardScene({ onReady }: CardSceneProps) {
     // --- Renderer ---
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
-    renderer.setClearColor(0x0d0d0d, 1)
+    renderer.setClearColor(0xfaf7f2, 1)
     renderer.outputColorSpace = THREE.SRGBColorSpace
     mount.appendChild(renderer.domElement)
 
@@ -131,11 +131,20 @@ export function CardScene({ onReady }: CardSceneProps) {
     let targetHoverX = 0
     let targetHoverY = 0
 
+    // Hover z-elevation — card lifts toward camera on hover
+    let isHovering = false
+    let hoverZ = 0
+
     // Track textures for cleanup and play-strip pulse
     let frontTexture: THREE.CanvasTexture | null = null
     let backTexture: THREE.CanvasTexture | null = null
     let frontCanvas: HTMLCanvasElement | null = null
     let backCanvas: HTMLCanvasElement | null = null
+
+    // Play strip hover glow state
+    let isHoveringStrip = false
+    let stripGlowAlpha = 0
+    let cachedBirdImg: HTMLImageElement | null = null
 
     // -----------------------------------------------------------------------
     // Pointer event handlers
@@ -163,9 +172,25 @@ export function CardScene({ onReady }: CardSceneProps) {
       const rect = renderer.domElement.getBoundingClientRect()
 
       if (!isDragging) {
+        isHovering = true
         // Hover parallax — max ~3 degrees additive tilt
         targetHoverX = ((e.clientY - (rect.top + rect.height / 2)) / rect.height) * 0.1
         targetHoverY = ((e.clientX - (rect.left + rect.width / 2)) / rect.width) * 0.1
+
+        // Play strip hover glow — raycast to check if hovering over the strip
+        if (frontCanvas && !isFlipped) {
+          const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
+          const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1
+          const rc = new THREE.Raycaster()
+          rc.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera)
+          const hits = rc.intersectObject(frontMesh)
+          const uv = hits.length > 0 ? hits[0].uv : null
+          const overStrip = uv ? uv.y >= 0.48 && uv.y <= 0.62 : false
+          if (overStrip !== isHoveringStrip) {
+            isHoveringStrip = overStrip
+            renderer.domElement.style.cursor = overStrip ? "pointer" : "grab"
+          }
+        }
         return
       }
 
@@ -222,6 +247,7 @@ export function CardScene({ onReady }: CardSceneProps) {
     function onMouseLeave() {
       targetHoverX = 0
       targetHoverY = 0
+      isHovering = false
     }
 
     // -----------------------------------------------------------------------
@@ -257,26 +283,33 @@ export function CardScene({ onReady }: CardSceneProps) {
       const ctx = frontCanvas.getContext("2d")
       if (!ctx) return
 
-      // Brief flash: draw a lighter overlay on the strip area
       const cw = frontCanvas.width
       const ch = frontCanvas.height
-      // Strip region — roughly 40-50% from top in canvas coords (Y axis inverted from UV)
       const stripY = ch * 0.38
       const stripH = ch * 0.12
+
+      // Strong gold glow pulse — two layers for intensity
       ctx.save()
-      ctx.globalAlpha = 0.35
+      ctx.globalAlpha = 0.55
       ctx.fillStyle = "#f5d080"
       ctx.fillRect(0, stripY, cw, stripH)
       ctx.restore()
+
+      // Extra bright center bloom
+      ctx.save()
+      ctx.globalAlpha = 0.3
+      ctx.fillStyle = "#ffe8b0"
+      ctx.fillRect(cw * 0.2, stripY + stripH * 0.15, cw * 0.6, stripH * 0.7)
+      ctx.restore()
+
       frontTexture.needsUpdate = true
 
       setTimeout(() => {
         if (!frontCanvas || !frontTexture) return
-        // Redraw the full front to restore normal state
         drawCardFront(frontCanvas, null).then(() => {
           if (frontTexture) frontTexture.needsUpdate = true
         })
-      }, 200)
+      }, 250)
     }
 
     // -----------------------------------------------------------------------
@@ -330,9 +363,51 @@ export function CardScene({ onReady }: CardSceneProps) {
         cardGroup.rotation.x = springX.position + hoverX
         cardGroup.rotation.y = springY.position + hoverY
 
+        // Hover z-elevation — lerp toward camera
+        const targetZ = isHovering ? 0.15 : 0
+        hoverZ += (targetZ - hoverZ) * 0.08
+        cardGroup.position.z = hoverZ
+
         // Idle float — subtle sine wave, ~1-2px perceived movement
         const elapsed = clock.getElapsedTime()
         cardGroup.position.y = Math.sin(elapsed * 0.8) * 0.015
+      }
+
+      // Animated play strip hover glow — throttled to reduce canvas redraws
+      const prevGlow = stripGlowAlpha
+      const targetGlow = isHoveringStrip ? 0.4 : 0
+      stripGlowAlpha += (targetGlow - stripGlowAlpha) * 0.12
+
+      // Only redraw when glow changes by a visible amount (> 0.02)
+      const glowChanged = Math.abs(stripGlowAlpha - prevGlow) > 0.02
+      if (frontCanvas && frontTexture && glowChanged) {
+        if (stripGlowAlpha < 0.01) {
+          // Clean exit — redraw without glow
+          stripGlowAlpha = 0
+          drawCardFront(frontCanvas, cachedBirdImg).then(() => {
+            if (frontTexture) frontTexture.needsUpdate = true
+          })
+        } else {
+          drawCardFront(frontCanvas, cachedBirdImg).then(() => {
+            if (!frontCanvas || !frontTexture) return
+            const fCtx2 = frontCanvas.getContext("2d")
+            if (!fCtx2) return
+            const DPR = Math.min(window.devicePixelRatio || 1, 2)
+            const cw = 500 * DPR
+            const ch = 700 * DPR
+            const stripY = ch * 0.38
+            const stripH = ch * 0.12
+            fCtx2.save()
+            fCtx2.globalAlpha = stripGlowAlpha
+            fCtx2.fillStyle = "#f5d080"
+            fCtx2.fillRect(0, stripY, cw, stripH)
+            fCtx2.globalAlpha = stripGlowAlpha * 0.6
+            fCtx2.fillStyle = "#ffe8b0"
+            fCtx2.fillRect(cw * 0.25, stripY + stripH * 0.2, cw * 0.5, stripH * 0.6)
+            fCtx2.restore()
+            frontTexture!.needsUpdate = true
+          })
+        }
       }
 
       renderer.render(scene, camera)
@@ -371,8 +446,9 @@ export function CardScene({ onReady }: CardSceneProps) {
       birdImg.src = "/images/kingfisher.jpg"
       await new Promise<void>((resolve) => {
         birdImg.onload = () => resolve()
-        birdImg.onerror = () => resolve() // drawCardFront handles missing image gracefully
+        birdImg.onerror = () => resolve()
       })
+      cachedBirdImg = birdImg.complete && birdImg.naturalWidth > 0 ? birdImg : null
 
       if (cancelled) return
 
@@ -449,7 +525,7 @@ export function CardScene({ onReady }: CardSceneProps) {
       style={{
         width: "100%",
         height: "100%",
-        background: "radial-gradient(ellipse at center, #1a1a1a 0%, #0a0a0a 100%)",
+        background: "#FAF7F2",
       }}
     />
   )
