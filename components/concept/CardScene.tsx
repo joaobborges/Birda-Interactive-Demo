@@ -2,16 +2,18 @@
 
 import { useEffect, useRef } from "react"
 import * as THREE from "three"
+import { drawCardFront } from "@/lib/card/drawCardFront"
+import { drawCardBack } from "@/lib/card/drawCardBack"
 
 /**
  * CardScene — Client-only Three.js scene for the Birda Field Card prototype.
  * Renders inside GalleryFrame via next/dynamic SSR isolation.
  *
  * Scene: dark background with museum-style warm/cool lighting and a
- * placeholder card mesh (2.5:3.5 ratio, forest green) at a 10-degree resting tilt.
+ * field card mesh (2.5:3.5 ratio) with canvas-painted front and back faces.
  *
- * Phase 2 Plan 01: establishes the 3D rendering foundation.
- * Phase 2 Plan 02+: will add card artwork texture.
+ * Phase 2 Plan 01: established the 3D rendering foundation.
+ * Phase 2 Plan 02: adds CanvasTexture front/back faces from drawing functions.
  * Phase 2 Plan 03+: will add hover/rotation interaction.
  */
 export function CardScene() {
@@ -39,32 +41,31 @@ export function CardScene() {
     renderer.setSize(width, height)
 
     // --- Lights (museum spotlight pattern from CONTEXT.md) ---
-    // Ambient fill — low intensity to keep depth
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.25)
     scene.add(ambientLight)
 
-    // Warm key light from above-front
     const keyLight = new THREE.DirectionalLight(0xfff4e0, 1.4)
     keyLight.position.set(2, 4, 3)
     scene.add(keyLight)
 
-    // Cool fill light from left-side
     const fillLight = new THREE.DirectionalLight(0xd0e8ff, 0.3)
     fillLight.position.set(-2, 1, 2)
     scene.add(fillLight)
 
-    // --- Placeholder card mesh ---
-    // Two planes in a Group for front/back faces
+    // --- Card geometry ---
     const cardGeometry = new THREE.PlaneGeometry(2.5, 3.5)
-    const cardMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1a3a2a,
-      side: THREE.FrontSide,
-    })
 
-    const frontMesh = new THREE.Mesh(cardGeometry, cardMaterial)
+    // Placeholder materials — will be replaced by canvas textures after async init
+    const frontMesh = new THREE.Mesh(
+      cardGeometry,
+      new THREE.MeshStandardMaterial({ color: 0x1a3a2a, side: THREE.FrontSide })
+    )
     frontMesh.position.z = 0.001
 
-    const backMesh = new THREE.Mesh(cardGeometry, cardMaterial.clone())
+    const backMesh = new THREE.Mesh(
+      cardGeometry,
+      new THREE.MeshStandardMaterial({ color: 0x1a3a2a, side: THREE.FrontSide })
+    )
     backMesh.rotation.y = Math.PI
 
     const cardGroup = new THREE.Group()
@@ -105,10 +106,86 @@ export function CardScene() {
     })
     resizeObserver.observe(mount)
 
+    // Track textures for cleanup
+    let frontTexture: THREE.CanvasTexture | null = null
+    let backTexture: THREE.CanvasTexture | null = null
+
+    // --- Async init: fonts ready → draw canvases → apply CanvasTextures ---
+    let cancelled = false
+
+    const init = async () => {
+      // Pitfall 1 (RESEARCH.md): await document.fonts.ready to ensure
+      // Playfair Display + Inter are loaded before canvas drawing
+      await document.fonts.ready
+
+      if (cancelled) return
+
+      // Create off-screen canvases
+      const frontCanvas = document.createElement("canvas")
+      const backCanvas = document.createElement("canvas")
+
+      // Load bird illustration — graceful fallback if missing
+      const birdImg = new Image()
+      birdImg.src = "/images/kingfisher.jpg"
+      await new Promise<void>((resolve) => {
+        birdImg.onload = () => resolve()
+        birdImg.onerror = () => resolve() // drawCardFront handles missing image gracefully
+      })
+
+      if (cancelled) return
+
+      // Draw front and back faces to canvases
+      await drawCardFront(frontCanvas, birdImg)
+      drawCardBack(backCanvas)
+
+      if (cancelled) return
+
+      // Create CanvasTextures — do NOT set needsUpdate every frame (RESEARCH.md anti-patterns)
+      frontTexture = new THREE.CanvasTexture(frontCanvas)
+      frontTexture.minFilter = THREE.LinearFilter
+      frontTexture.colorSpace = THREE.SRGBColorSpace
+
+      backTexture = new THREE.CanvasTexture(backCanvas)
+      backTexture.minFilter = THREE.LinearFilter
+      backTexture.colorSpace = THREE.SRGBColorSpace
+
+      // Dispose placeholder materials and apply canvas texture materials
+      const prevFrontMat = frontMesh.material as THREE.MeshStandardMaterial
+      prevFrontMat.dispose()
+      frontMesh.material = new THREE.MeshStandardMaterial({
+        map: frontTexture,
+        side: THREE.FrontSide,
+      })
+
+      const prevBackMat = backMesh.material as THREE.MeshStandardMaterial
+      prevBackMat.dispose()
+      backMesh.material = new THREE.MeshStandardMaterial({
+        map: backTexture,
+        side: THREE.FrontSide,
+      })
+    }
+
+    init().catch(console.error)
+
     // --- Cleanup ---
     return () => {
+      cancelled = true
       cancelAnimationFrame(animFrameId)
       resizeObserver.disconnect()
+
+      // Dispose textures
+      if (frontTexture) frontTexture.dispose()
+      if (backTexture) backTexture.dispose()
+
+      // Dispose materials
+      const fMat = frontMesh.material as THREE.MeshStandardMaterial
+      fMat.dispose()
+      const bMat = backMesh.material as THREE.MeshStandardMaterial
+      bMat.dispose()
+
+      // Dispose shared geometry
+      cardGeometry.dispose()
+
       renderer.dispose()
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement)
