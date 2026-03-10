@@ -5,6 +5,7 @@ import * as THREE from "three"
 import { drawCardFront } from "@/lib/card/drawCardFront"
 import { drawCardBack } from "@/lib/card/drawCardBack"
 import { stepSpring, type SpringState } from "@/lib/card/springPhysics"
+import { VERTEX_SHADER, FRAGMENT_SHADER } from "@/lib/card/shaderSources"
 
 /**
  * CardScene — Client-only Three.js scene for the Birda Field Card prototype.
@@ -72,11 +73,26 @@ export function CardScene({ onReady }: CardSceneProps) {
     scene.add(fillLight)
 
     // --- Card geometry ---
+    // Front face uses 64x64 subdivision for vertex displacement
+    const frontGeometry = new THREE.PlaneGeometry(2.5, 3.5, 64, 64)
+    // Back face has no displacement — keep minimal geometry
     const cardGeometry = new THREE.PlaneGeometry(2.5, 3.5)
 
+    // Frequency data texture (1×64 RGBA) — zeroed initially, Plan 02 fills from AnalyserNode
+    const BIN_COUNT = 64
+    const freqData = new Uint8Array(BIN_COUNT * 4) // RGBA
+    const freqTexture = new THREE.DataTexture(freqData, BIN_COUNT, 1, THREE.RGBAFormat, THREE.UnsignedByteType)
+    freqTexture.minFilter = THREE.LinearFilter
+    freqTexture.magFilter = THREE.LinearFilter
+    freqTexture.needsUpdate = true
+
+    // Shader material ref — populated in async init, used in animate()
+    let shaderMaterial: THREE.ShaderMaterial | null = null
+
     // Placeholder materials — replaced by canvas textures after async init
-    const frontMesh = new THREE.Mesh(
-      cardGeometry,
+    // Typed as Material (base class) so ShaderMaterial can be assigned in async init
+    const frontMesh = new THREE.Mesh<THREE.PlaneGeometry, THREE.Material>(
+      frontGeometry,
       new THREE.MeshStandardMaterial({ color: 0x1a3a2a, side: THREE.FrontSide })
     )
     frontMesh.position.z = 0.001
@@ -350,6 +366,12 @@ export function CardScene({ onReady }: CardSceneProps) {
       const dt = Math.min((now - lastTime) / 1000, 0.05)
       lastTime = now
 
+      // Accumulate shader time via dt (not clock.getElapsedTime()) to avoid
+      // jump on tab switch (RESEARCH.md Pitfall 8)
+      if (shaderMaterial) {
+        shaderMaterial.uniforms.uTime.value += dt
+      }
+
       if (!isDragging) {
         // Step springs toward their targets
         springX = stepSpring(springX, dt)
@@ -443,7 +465,7 @@ export function CardScene({ onReady }: CardSceneProps) {
 
       // Load bird illustration — graceful fallback if missing
       const birdImg = new Image()
-      birdImg.src = "/images/kingfisher.jpg"
+      birdImg.src = "/images/kingfisher.png"
       await new Promise<void>((resolve) => {
         birdImg.onload = () => resolve()
         birdImg.onerror = () => resolve()
@@ -467,13 +489,21 @@ export function CardScene({ onReady }: CardSceneProps) {
       backTexture.minFilter = THREE.LinearFilter
       backTexture.colorSpace = THREE.SRGBColorSpace
 
-      // Dispose placeholder materials and apply canvas texture materials
+      // Dispose placeholder material and apply ShaderMaterial to front face
       const prevFrontMat = frontMesh.material as THREE.MeshStandardMaterial
       prevFrontMat.dispose()
-      frontMesh.material = new THREE.MeshStandardMaterial({
-        map: frontTexture,
+      shaderMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          uBirdTex: { value: frontTexture },
+          uFreqTex: { value: freqTexture },
+          uTime: { value: 0.0 },
+          uBlend: { value: 0.0 },
+        },
+        vertexShader: VERTEX_SHADER,
+        fragmentShader: FRAGMENT_SHADER,
         side: THREE.FrontSide,
       })
+      frontMesh.material = shaderMaterial
 
       const prevBackMat = backMesh.material as THREE.MeshStandardMaterial
       prevBackMat.dispose()
@@ -502,14 +532,21 @@ export function CardScene({ onReady }: CardSceneProps) {
       // Dispose textures
       if (frontTexture) frontTexture.dispose()
       if (backTexture) backTexture.dispose()
+      freqTexture.dispose()
 
       // Dispose materials
-      const fMat = frontMesh.material as THREE.MeshStandardMaterial
-      fMat.dispose()
+      if (shaderMaterial) {
+        shaderMaterial.dispose()
+      } else {
+        // Dispose placeholder if init never completed
+        const fMat = frontMesh.material as THREE.MeshStandardMaterial
+        fMat.dispose()
+      }
       const bMat = backMesh.material as THREE.MeshStandardMaterial
       bMat.dispose()
 
-      // Dispose shared geometry
+      // Dispose geometries
+      frontGeometry.dispose()
       cardGeometry.dispose()
 
       renderer.dispose()
