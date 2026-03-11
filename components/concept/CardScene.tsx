@@ -59,7 +59,7 @@ export function CardScene({ onReady }: CardSceneProps) {
     const width = mount.clientWidth || 400
     const height = mount.clientHeight || 520
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100)
-    camera.position.z = 5
+    camera.position.z = 6.5
     renderer.setSize(width, height)
 
     // --- Lights (museum spotlight pattern from CONTEXT.md) ---
@@ -113,51 +113,43 @@ export function CardScene({ onReady }: CardSceneProps) {
       new THREE.MeshStandardMaterial({ color: 0x1a3a2a, side: THREE.FrontSide })
     )
     backMesh.rotation.y = Math.PI
+    // Position back face flush with spine back edge
+    backMesh.position.z = -spineThickness / 2
 
-    // Spine — visible dark-green edge between front and back faces (GEOM-02)
-    const spineGeometry = new THREE.BoxGeometry(CARD_W, CARD_H, spineThickness)
+    // Spine — 4 edge strips (top/bottom/left/right) between front and back faces (GEOM-02)
+    // Using edge strips instead of BoxGeometry avoids z-fighting with coplanar card faces.
+    const edgeThickness = 0.005 // thin strip visible at card edge
+    const spineEdges: THREE.Mesh[] = []
     const spineMaterial = new THREE.MeshStandardMaterial({
       color: 0x1a3a2a,
       roughness: 0.9,
       metalness: 0.0,
-      side: THREE.FrontSide,
     })
-    const spineMesh = new THREE.Mesh(spineGeometry, spineMaterial)
-    spineMesh.position.z = 0 // centered; front face at +spineThickness/2, back at -spineThickness/2
-
-    // Play button protrusion — pill-shaped raised element on front face (GEOM-03)
-    // Pill dimensions from canvas play strip: ~160px wide × 30px tall
-    // Canvas scale: 2.58 world units / 500px = 0.00516 wu/px
-    // Capsule: radius=0.072 (half height ~28px), length=0.67 (body width)
-    // Total width = 0.67 + 2×0.072 = 0.814 wu ≈ 158px in canvas
-    const pillRadius = 0.072
-    const pillLength = 0.67
-    let pillGeometry: THREE.BufferGeometry
-    if (typeof THREE.CapsuleGeometry !== "undefined") {
-      pillGeometry = new THREE.CapsuleGeometry(pillRadius, pillLength, 4, 8)
-    } else {
-      pillGeometry = new THREE.BoxGeometry(0.814, 0.155, 0.05)
-    }
-    const pillMaterial = new THREE.MeshStandardMaterial({
-      color: 0x0f2318, // same as play strip background — depth via geometry, not color
-      roughness: 0.85,
-      metalness: 0.0,
-    })
-    const pillMesh = new THREE.Mesh(pillGeometry, pillMaterial)
-    // Rotate capsule to lie horizontally (CapsuleGeometry is vertical by default)
-    if (typeof THREE.CapsuleGeometry !== "undefined") {
-      pillMesh.rotation.z = Math.PI / 2
-    }
-    // Position: centered x, play strip center y, above front face surface
-    // Play strip center at canvas y=385 of 700 → UV y = 1 - 385/700 = 0.45
-    // World y = (0.45 - 0.5) * CARD_H = -0.05 * 3.62 = -0.181
-    pillMesh.position.set(0, -0.181, spineThickness / 2 + 0.04)
+    // Top edge
+    const topGeo = new THREE.BoxGeometry(CARD_W, edgeThickness, spineThickness)
+    const topMesh = new THREE.Mesh(topGeo, spineMaterial)
+    topMesh.position.set(0, CARD_H / 2, 0)
+    spineEdges.push(topMesh)
+    // Bottom edge
+    const bottomGeo = new THREE.BoxGeometry(CARD_W, edgeThickness, spineThickness)
+    const bottomMesh = new THREE.Mesh(bottomGeo, spineMaterial)
+    bottomMesh.position.set(0, -CARD_H / 2, 0)
+    spineEdges.push(bottomMesh)
+    // Left edge
+    const leftGeo = new THREE.BoxGeometry(edgeThickness, CARD_H, spineThickness)
+    const leftMesh = new THREE.Mesh(leftGeo, spineMaterial)
+    leftMesh.position.set(-CARD_W / 2, 0, 0)
+    spineEdges.push(leftMesh)
+    // Right edge
+    const rightGeo = new THREE.BoxGeometry(edgeThickness, CARD_H, spineThickness)
+    const rightMesh = new THREE.Mesh(rightGeo, spineMaterial)
+    rightMesh.position.set(CARD_W / 2, 0, 0)
+    spineEdges.push(rightMesh)
 
     const cardGroup = new THREE.Group()
     cardGroup.add(frontMesh)
     cardGroup.add(backMesh)
-    cardGroup.add(spineMesh)
-    cardGroup.add(pillMesh)
+    for (const edge of spineEdges) cardGroup.add(edge)
     scene.add(cardGroup)
 
     // -----------------------------------------------------------------------
@@ -507,43 +499,6 @@ export function CardScene({ onReady }: CardSceneProps) {
         cardGroup.position.y = Math.sin(elapsed * 0.8) * 0.015
       }
 
-      // Animated play strip hover glow — throttled to reduce canvas redraws
-      const prevGlow = stripGlowAlpha
-      const targetGlow = isHoveringStrip ? 0.4 : 0
-      stripGlowAlpha += (targetGlow - stripGlowAlpha) * 0.12
-
-      // Only redraw when glow changes by a visible amount (> 0.02)
-      const glowChanged = Math.abs(stripGlowAlpha - prevGlow) > 0.02
-      if (frontCanvas && frontTexture && glowChanged) {
-        if (stripGlowAlpha < 0.01) {
-          // Clean exit — redraw without glow, preserving audio icon state
-          stripGlowAlpha = 0
-          drawCardFront(frontCanvas, cachedBirdImg, isAudioPlaying).then(() => {
-            if (frontTexture) frontTexture.needsUpdate = true
-          })
-        } else {
-          drawCardFront(frontCanvas, cachedBirdImg, isAudioPlaying).then(() => {
-            if (!frontCanvas || !frontTexture) return
-            const fCtx2 = frontCanvas.getContext("2d")
-            if (!fCtx2) return
-            const DPR = Math.min(window.devicePixelRatio || 1, 2)
-            const cw = 500 * DPR
-            const ch = 700 * DPR
-            const stripY = ch * 0.38
-            const stripH = ch * 0.12
-            fCtx2.save()
-            fCtx2.globalAlpha = stripGlowAlpha
-            fCtx2.fillStyle = "#f5d080"
-            fCtx2.fillRect(0, stripY, cw, stripH)
-            fCtx2.globalAlpha = stripGlowAlpha * 0.6
-            fCtx2.fillStyle = "#ffe8b0"
-            fCtx2.fillRect(cw * 0.25, stripY + stripH * 0.2, cw * 0.5, stripH * 0.6)
-            fCtx2.restore()
-            frontTexture!.needsUpdate = true
-          })
-        }
-      }
-
       renderer.render(scene, camera)
     }
     animate()
@@ -667,10 +622,11 @@ export function CardScene({ onReady }: CardSceneProps) {
       // Dispose geometries
       frontGeometry.dispose()
       cardGeometry.dispose()
-      spineGeometry.dispose()
+      topGeo.dispose()
+      bottomGeo.dispose()
+      leftGeo.dispose()
+      rightGeo.dispose()
       spineMaterial.dispose()
-      pillGeometry.dispose()
-      pillMaterial.dispose()
 
       renderer.dispose()
       if (mount.contains(renderer.domElement)) {
