@@ -1,6 +1,9 @@
 import { ConceptSection } from "@/components/concept/ConceptSection"
 import { GalleryFrame } from "@/components/concept/GalleryFrame"
 import { MobileRedirect } from "@/components/concept/MobileRedirect"
+import { UpsAndDowns } from "@/components/concept/UpsAndDowns"
+import { BuiltWith } from "@/components/concept/BuiltWith"
+import { Footer } from "@/components/concept/Footer"
 
 export default function Page() {
   return (
@@ -14,6 +17,9 @@ export default function Page() {
       <div className="hidden md:block">
         <ConceptSection />
         <GalleryFrame />
+        <UpsAndDowns />
+        <BuiltWith />
+        <Footer />
       </div>
     </main>
   )

@@ -62,8 +62,11 @@ export async function drawCardBack(canvas: HTMLCanvasElement): Promise<void> {
   ctx.fillText("Specimen Record", 250, 85)
   ctx.restore()
 
-  // Gold divider at y=105
-  drawDivider(ctx, 16, 484, 105, "#c9a84c", 1)
+  // Gold divider at y=105 — matches bottom decorative rule style
+  ctx.save()
+  ctx.globalAlpha = 0.6
+  drawDivider(ctx, 16, 484, 105, "#c9a84c", 0.75)
+  ctx.restore()
 
   // --- 4. Data rows (y: 120–560) ---
   const rows: Array<{ label: string; value: string; valueItalic?: boolean }> = [
@@ -77,8 +80,8 @@ export async function drawCardBack(canvas: HTMLCanvasElement): Promise<void> {
     { label: "EDITION", value: "#001 / 500" },
   ]
 
-  const rowStartY = 128
-  const rowHeight = 52
+  const rowStartY = 145
+  const rowHeight = 56
   const labelX = 40
 
   rows.forEach((row, i) => {
@@ -108,14 +111,13 @@ export async function drawCardBack(canvas: HTMLCanvasElement): Promise<void> {
 
     // Subtle divider after each row (except last)
     if (i < rows.length - 1) {
-      drawDivider(ctx, labelX, W - labelX, baseY + rowHeight - 2, "rgba(201,168,76,0.2)", 0.5)
+      drawDivider(ctx, labelX, W - labelX, baseY + rowHeight - 10, "rgba(201,168,76,0.2)", 0.5)
     }
   })
 
-  // --- 5. Bottom decorative rule ---
-  const bottomY = 600
+  // --- 5. Bottom decorative rule with bird mark ---
+  const bottomY = 638
   ctx.save()
-  // Decorative centered rule with small diamond ornament
   ctx.strokeStyle = "#c9a84c"
   ctx.lineWidth = 0.75
   ctx.globalAlpha = 0.6
@@ -129,18 +131,10 @@ export async function drawCardBack(canvas: HTMLCanvasElement): Promise<void> {
   ctx.moveTo(290, bottomY)
   ctx.lineTo(460, bottomY)
   ctx.stroke()
-  // Center diamond
-  ctx.globalAlpha = 1.0
-  ctx.fillStyle = "#c9a84c"
-  ctx.save()
-  ctx.translate(250, bottomY)
-  ctx.rotate(Math.PI / 4)
-  ctx.fillRect(-4, -4, 8, 8)
-  ctx.restore()
   ctx.restore()
 
-  // --- 5.5. Birda logo mark (replaces BIRDA · FIELD COLLECTION text) ---
-  await drawBirdaMark(ctx, 250, 625, 40)
+  // Bird mark — same position and size as front face (250, 638, 40)
+  await drawBirdaMark(ctx, 250, 638, 40)
 
   // --- 6. Linen grain overlay ---
   drawGrain(ctx)

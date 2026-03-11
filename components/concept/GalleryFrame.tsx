@@ -74,7 +74,7 @@ export function GalleryFrame() {
             className="relative w-full"
             style={{
               border: "1px solid rgba(26,26,26,0.08)",
-              padding: "40px 32px",
+              padding: 0,
             }}
           >
 
@@ -88,7 +88,7 @@ export function GalleryFrame() {
             {/* Flip button — subtle affordance at bottom-right of inner frame */}
             <button
               onClick={() => flipFn?.()}
-              className="absolute -bottom-4 -right-4 w-8 h-8 rounded-full bg-near-black/10 hover:bg-near-black/20 flex items-center justify-center transition-colors"
+              className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-near-black/10 hover:bg-near-black/20 flex items-center justify-center transition-colors"
               aria-label="Flip card"
               title="Flip card"
             >

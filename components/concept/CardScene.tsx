@@ -194,23 +194,31 @@ export function CardScene({ onReady }: CardSceneProps) {
     // Interaction state
     // -----------------------------------------------------------------------
 
-    // Spring physics — stiffness 120, damping 12, mass 1
+    // Spring physics — critically damped for zero overshoot, ~0.7s settle
     // Y resting target = Math.PI / 18 (10-degree tilt per CONTEXT.md)
+    // Critical damping formula: damping = 2 * sqrt(stiffness * mass)
+    const SPRING_STIFFNESS = 50
+    const SPRING_MASS = 1
+    const SPRING_DAMPING = 2 * Math.sqrt(SPRING_STIFFNESS * SPRING_MASS) // critical damping
+
+    // Maximum release velocity (rad/s) — caps post-release momentum to prevent wild spinning
+    const MAX_RELEASE_VELOCITY = 10
+
     let springX: SpringState = {
       position: 0,
       velocity: 0,
       target: 0,
-      stiffness: 120,
-      damping: 12,
-      mass: 1,
+      stiffness: SPRING_STIFFNESS,
+      damping: SPRING_DAMPING,
+      mass: SPRING_MASS,
     }
     let springY: SpringState = {
       position: Math.PI / 18,
       velocity: 0,
       target: Math.PI / 18,
-      stiffness: 120,
-      damping: 12,
-      mass: 1,
+      stiffness: SPRING_STIFFNESS,
+      damping: SPRING_DAMPING,
+      mass: SPRING_MASS,
     }
 
     let isDragging = false
@@ -342,15 +350,20 @@ export function CardScene({ onReady }: CardSceneProps) {
       renderer.domElement.style.cursor = "grab"
 
       // Seed spring from current rotation and drag momentum
+      // Clamp release velocity to MAX_RELEASE_VELOCITY to prevent wild spinning (INTR-01)
+      const rawVelX = dragVelocityX * 5
+      const rawVelY = dragVelocityY * 5
+      const clampedVelX = Math.min(Math.max(rawVelX, -MAX_RELEASE_VELOCITY), MAX_RELEASE_VELOCITY)
+      const clampedVelY = Math.min(Math.max(rawVelY, -MAX_RELEASE_VELOCITY), MAX_RELEASE_VELOCITY)
       springX = {
         ...springX,
         position: cardGroup.rotation.x,
-        velocity: dragVelocityX * 5,
+        velocity: clampedVelX,
       }
       springY = {
         ...springY,
         position: cardGroup.rotation.y,
-        velocity: dragVelocityY * 5,
+        velocity: clampedVelY,
       }
 
       // Detect drag-to-flip: normalise Y rotation and check if past 90 deg
@@ -360,7 +373,23 @@ export function CardScene({ onReady }: CardSceneProps) {
 
       if (pastHalf !== isFlipped) {
         isFlipped = pastHalf
-        springY.target = isFlipped ? Math.PI + Math.PI / 18 : Math.PI / 18
+        const newTarget = isFlipped ? Math.PI + Math.PI / 18 : Math.PI / 18
+
+        // Normalise the spring position to take the shortest arc to the new target.
+        // Without this, going back→front results in a large linear displacement
+        // (e.g. position≈5.5 rad → target≈0.17 rad) causing the card to spin the
+        // long way round instead of snapping cleanly over the edge.
+        let normalisedPosition = springY.position
+        const diff = newTarget - normalisedPosition
+        // If the angular distance is more than PI, wrap position by ±2PI so the
+        // spring travels the short arc (max PI) instead of the long arc.
+        if (diff > Math.PI) {
+          normalisedPosition += Math.PI * 2
+        } else if (diff < -Math.PI) {
+          normalisedPosition -= Math.PI * 2
+        }
+
+        springY = { ...springY, position: normalisedPosition, target: newTarget }
       }
     }
 

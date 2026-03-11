@@ -3,23 +3,27 @@ import { AnimatedWrapper } from "./AnimatedWrapper"
 const steps = [
   {
     num: "01",
-    label: "Observe",
-    description: "Spot a species in the wild — let the encounter begin.",
+    label: "Join",
+    description:
+      "Pick a challenge and start logging sightings. Each one is tied to a species, a season, or a region.",
   },
   {
     num: "02",
     label: "Log",
-    description: "Record your sighting. Every detail becomes permanent record.",
+    description:
+      "Spot a bird, record it. Every verified sighting moves you up the leaderboard.",
   },
   {
     num: "03",
-    label: "Unlock",
-    description: "Reach ten sightings and a Field Card is yours to claim.",
+    label: "Climb",
+    description:
+      "Track your rank against other players. The leaderboard updates with every submission.",
   },
   {
     num: "04",
-    label: "Collect",
-    description: "Hold a living archive of every bird you've ever found.",
+    label: "Earn",
+    description:
+      "Finish in the top hundred and unlock a digital Field Card in your profile. Crack the top ten and a physical card ships to your door.",
   },
 ]
 

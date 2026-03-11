@@ -88,6 +88,8 @@ export const FRAGMENT_SHADER = /* glsl */ `
   void main() {
     vec4 col = texture2D(uBirdTex, vUv);
     if (col.a < 0.5) discard;
+    // Brightness boost to match the lit MeshStandardMaterial on the back face
+    col.rgb *= 1.15;
     gl_FragColor = col;
   }
 `
