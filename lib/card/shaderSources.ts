@@ -60,9 +60,10 @@ export const VERTEX_SHADER = /* glsl */ `
     // Soft fade prevents hard seam at play strip boundary
     float zoneMask = smoothstep(0.48, 0.58, uv.y);
 
-    // Edge fade — reduce displacement near card edges to prevent overflow
+    // Edge fade — reduce displacement near all card edges to prevent overflow
+    // edgeX: left/right edges, edgeY: top seam + bottom edge + upper card fade
     float edgeX = smoothstep(0.0, 0.08, uv.x) * smoothstep(1.0, 0.92, uv.x);
-    float edgeY = smoothstep(0.48, 0.58, uv.y) * smoothstep(1.0, 0.92, uv.y);
+    float edgeY = smoothstep(0.48, 0.58, uv.y) * smoothstep(1.0, 0.92, uv.y) * smoothstep(0.0, 0.08, uv.y);
     float edgeMask = edgeX * edgeY;
 
     // Final displacement: elevation × strength × audio × masks × blend

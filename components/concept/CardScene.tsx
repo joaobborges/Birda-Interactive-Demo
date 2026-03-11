@@ -75,10 +75,18 @@ export function CardScene({ onReady }: CardSceneProps) {
     scene.add(fillLight)
 
     // --- Card geometry ---
+    // GEOM-01: Enlarged dimensions so the gold border aligns with perceived card edge.
+    // The canvas draws the border 8px inside a 500×700px canvas. Scaling by 1/(1-2*8/500)
+    // ≈ 1.033 maps the outer dark-green canvas area behind the spine edges.
+    // GEOM-02: spineThickness gives the card physical trading-card depth (~2mm).
+    const CARD_W = 2.58         // enlarged from 2.5 — maps gold border to card edge
+    const CARD_H = 3.62         // enlarged from 3.5 (same proportion)
+    const spineThickness = 0.08 // ~2mm physical trading card feel
+
     // Front face uses 200x200 subdivision for fine topographic displacement
-    const frontGeometry = new THREE.PlaneGeometry(2.5, 3.5, 200, 200)
+    const frontGeometry = new THREE.PlaneGeometry(CARD_W, CARD_H, 200, 200)
     // Back face has no displacement — keep minimal geometry
-    const cardGeometry = new THREE.PlaneGeometry(2.5, 3.5)
+    const cardGeometry = new THREE.PlaneGeometry(CARD_W, CARD_H)
 
     // Frequency data texture (1×64 RGBA) — zeroed initially, Plan 02 fills from AnalyserNode
     const BIN_COUNT = 64
@@ -97,7 +105,8 @@ export function CardScene({ onReady }: CardSceneProps) {
       frontGeometry,
       new THREE.MeshStandardMaterial({ color: 0x1a3a2a, side: THREE.FrontSide })
     )
-    frontMesh.position.z = 0.001
+    // Offset front face by half spine thickness so spine sits between front and back
+    frontMesh.position.z = spineThickness / 2
 
     const backMesh = new THREE.Mesh(
       cardGeometry,
@@ -105,9 +114,21 @@ export function CardScene({ onReady }: CardSceneProps) {
     )
     backMesh.rotation.y = Math.PI
 
+    // Spine — visible dark-green edge between front and back faces (GEOM-02)
+    const spineGeometry = new THREE.BoxGeometry(CARD_W, CARD_H, spineThickness)
+    const spineMaterial = new THREE.MeshStandardMaterial({
+      color: 0x1a3a2a,
+      roughness: 0.9,
+      metalness: 0.0,
+      side: THREE.FrontSide,
+    })
+    const spineMesh = new THREE.Mesh(spineGeometry, spineMaterial)
+    spineMesh.position.z = 0 // centered; front face at +spineThickness/2, back at -spineThickness/2
+
     const cardGroup = new THREE.Group()
     cardGroup.add(frontMesh)
     cardGroup.add(backMesh)
+    cardGroup.add(spineMesh)
     scene.add(cardGroup)
 
     // -----------------------------------------------------------------------
@@ -617,6 +638,8 @@ export function CardScene({ onReady }: CardSceneProps) {
       // Dispose geometries
       frontGeometry.dispose()
       cardGeometry.dispose()
+      spineGeometry.dispose()
+      spineMaterial.dispose()
 
       renderer.dispose()
       if (mount.contains(renderer.domElement)) {
