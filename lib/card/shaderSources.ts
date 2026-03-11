@@ -86,6 +86,8 @@ export const FRAGMENT_SHADER = /* glsl */ `
   varying vec2 vUv;
 
   void main() {
-    gl_FragColor = texture2D(uBirdTex, vUv);
+    vec4 col = texture2D(uBirdTex, vUv);
+    if (col.a < 0.5) discard;
+    gl_FragColor = col;
   }
 `

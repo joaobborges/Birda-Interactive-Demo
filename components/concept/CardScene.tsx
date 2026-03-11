@@ -116,35 +116,73 @@ export function CardScene({ onReady }: CardSceneProps) {
     // Position back face flush with spine back edge
     backMesh.position.z = -spineThickness / 2
 
-    // Spine — 4 edge strips (top/bottom/left/right) between front and back faces (GEOM-02)
-    // Using edge strips instead of BoxGeometry avoids z-fighting with coplanar card faces.
-    const edgeThickness = 0.005 // thin strip visible at card edge
+    // Spine — rounded edge frame between front and back faces (GEOM-02)
+    // Canvas roundRect uses 12px radius on 500px width → 12/500 * CARD_W ≈ 0.062 world units.
+    // Straight edges are shortened by the corner radius; quarter-torus arcs fill the corners.
+    const cornerRadius = 0.062
+    const edgeThickness = 0.005
+    const spineGeometries: THREE.BufferGeometry[] = []
     const spineEdges: THREE.Mesh[] = []
     const spineMaterial = new THREE.MeshStandardMaterial({
       color: 0x1a3a2a,
       roughness: 0.9,
       metalness: 0.0,
     })
-    // Top edge
-    const topGeo = new THREE.BoxGeometry(CARD_W, edgeThickness, spineThickness)
+
+    // Straight edges (shortened by cornerRadius at each end)
+    const straightW = CARD_W - 2 * cornerRadius
+    const straightH = CARD_H - 2 * cornerRadius
+
+    const topGeo = new THREE.BoxGeometry(straightW, edgeThickness, spineThickness)
     const topMesh = new THREE.Mesh(topGeo, spineMaterial)
     topMesh.position.set(0, CARD_H / 2, 0)
-    spineEdges.push(topMesh)
-    // Bottom edge
-    const bottomGeo = new THREE.BoxGeometry(CARD_W, edgeThickness, spineThickness)
+    spineEdges.push(topMesh); spineGeometries.push(topGeo)
+
+    const bottomGeo = new THREE.BoxGeometry(straightW, edgeThickness, spineThickness)
     const bottomMesh = new THREE.Mesh(bottomGeo, spineMaterial)
     bottomMesh.position.set(0, -CARD_H / 2, 0)
-    spineEdges.push(bottomMesh)
-    // Left edge
-    const leftGeo = new THREE.BoxGeometry(edgeThickness, CARD_H, spineThickness)
+    spineEdges.push(bottomMesh); spineGeometries.push(bottomGeo)
+
+    const leftGeo = new THREE.BoxGeometry(edgeThickness, straightH, spineThickness)
     const leftMesh = new THREE.Mesh(leftGeo, spineMaterial)
     leftMesh.position.set(-CARD_W / 2, 0, 0)
-    spineEdges.push(leftMesh)
-    // Right edge
-    const rightGeo = new THREE.BoxGeometry(edgeThickness, CARD_H, spineThickness)
+    spineEdges.push(leftMesh); spineGeometries.push(leftGeo)
+
+    const rightGeo = new THREE.BoxGeometry(edgeThickness, straightH, spineThickness)
     const rightMesh = new THREE.Mesh(rightGeo, spineMaterial)
     rightMesh.position.set(CARD_W / 2, 0, 0)
-    spineEdges.push(rightMesh)
+    spineEdges.push(rightMesh); spineGeometries.push(rightGeo)
+
+    // Quarter-arc corners extruded along Z (card depth)
+    // Shape: quarter circle in XY, extruded by spineThickness along Z
+    const cornerSegs = 12
+    const cx = CARD_W / 2 - cornerRadius
+    const cy = CARD_H / 2 - cornerRadius
+    const corners = [
+      { x:  cx, y:  cy, startAngle: 0 },                // top-right
+      { x: -cx, y:  cy, startAngle: Math.PI / 2 },      // top-left
+      { x: -cx, y: -cy, startAngle: Math.PI },           // bottom-left
+      { x:  cx, y: -cy, startAngle: 3 * Math.PI / 2 },  // bottom-right
+    ]
+    for (const c of corners) {
+      const shape = new THREE.Shape()
+      // Start at the arc start point, trace quarter circle, then close through center
+      const x0 = Math.cos(c.startAngle) * cornerRadius
+      const y0 = Math.sin(c.startAngle) * cornerRadius
+      shape.moveTo(0, 0)
+      shape.lineTo(x0, y0)
+      // absarc(cx, cy, radius, startAngle, endAngle, clockwise)
+      shape.absarc(0, 0, cornerRadius, c.startAngle, c.startAngle + Math.PI / 2, false)
+      shape.lineTo(0, 0)
+
+      const extrudeSettings = { depth: spineThickness, bevelEnabled: false }
+      const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings)
+      spineGeometries.push(geo)
+      const m = new THREE.Mesh(geo, spineMaterial)
+      // Center the extrusion on Z (it extrudes from 0 to depth, shift back by half)
+      m.position.set(c.x, c.y, -spineThickness / 2)
+      spineEdges.push(m)
+    }
 
     const cardGroup = new THREE.Group()
     cardGroup.add(frontMesh)
@@ -579,6 +617,8 @@ export function CardScene({ onReady }: CardSceneProps) {
       backMesh.material = new THREE.MeshStandardMaterial({
         map: backTexture,
         side: THREE.FrontSide,
+        alphaTest: 0.5,
+        transparent: false,
       })
     }
 
@@ -622,10 +662,7 @@ export function CardScene({ onReady }: CardSceneProps) {
       // Dispose geometries
       frontGeometry.dispose()
       cardGeometry.dispose()
-      topGeo.dispose()
-      bottomGeo.dispose()
-      leftGeo.dispose()
-      rightGeo.dispose()
+      for (const g of spineGeometries) g.dispose()
       spineMaterial.dispose()
 
       renderer.dispose()
