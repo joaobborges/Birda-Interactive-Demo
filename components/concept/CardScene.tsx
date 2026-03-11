@@ -125,10 +125,39 @@ export function CardScene({ onReady }: CardSceneProps) {
     const spineMesh = new THREE.Mesh(spineGeometry, spineMaterial)
     spineMesh.position.z = 0 // centered; front face at +spineThickness/2, back at -spineThickness/2
 
+    // Play button protrusion — pill-shaped raised element on front face (GEOM-03)
+    // Pill dimensions from canvas play strip: ~160px wide × 30px tall
+    // Canvas scale: 2.58 world units / 500px = 0.00516 wu/px
+    // Capsule: radius=0.072 (half height ~28px), length=0.67 (body width)
+    // Total width = 0.67 + 2×0.072 = 0.814 wu ≈ 158px in canvas
+    const pillRadius = 0.072
+    const pillLength = 0.67
+    let pillGeometry: THREE.BufferGeometry
+    if (typeof THREE.CapsuleGeometry !== "undefined") {
+      pillGeometry = new THREE.CapsuleGeometry(pillRadius, pillLength, 4, 8)
+    } else {
+      pillGeometry = new THREE.BoxGeometry(0.814, 0.155, 0.05)
+    }
+    const pillMaterial = new THREE.MeshStandardMaterial({
+      color: 0x0f2318, // same as play strip background — depth via geometry, not color
+      roughness: 0.85,
+      metalness: 0.0,
+    })
+    const pillMesh = new THREE.Mesh(pillGeometry, pillMaterial)
+    // Rotate capsule to lie horizontally (CapsuleGeometry is vertical by default)
+    if (typeof THREE.CapsuleGeometry !== "undefined") {
+      pillMesh.rotation.z = Math.PI / 2
+    }
+    // Position: centered x, play strip center y, above front face surface
+    // Play strip center at canvas y=385 of 700 → UV y = 1 - 385/700 = 0.45
+    // World y = (0.45 - 0.5) * CARD_H = -0.05 * 3.62 = -0.181
+    pillMesh.position.set(0, -0.181, spineThickness / 2 + 0.04)
+
     const cardGroup = new THREE.Group()
     cardGroup.add(frontMesh)
     cardGroup.add(backMesh)
     cardGroup.add(spineMesh)
+    cardGroup.add(pillMesh)
     scene.add(cardGroup)
 
     // -----------------------------------------------------------------------
@@ -559,7 +588,7 @@ export function CardScene({ onReady }: CardSceneProps) {
 
       // Draw front and back faces to canvases
       await drawCardFront(frontCanvas, birdImg)
-      drawCardBack(backCanvas)
+      await drawCardBack(backCanvas)
 
       if (cancelled) return
 
@@ -640,6 +669,8 @@ export function CardScene({ onReady }: CardSceneProps) {
       cardGeometry.dispose()
       spineGeometry.dispose()
       spineMaterial.dispose()
+      pillGeometry.dispose()
+      pillMaterial.dispose()
 
       renderer.dispose()
       if (mount.contains(renderer.domElement)) {
