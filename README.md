@@ -110,7 +110,6 @@ Open [http://localhost:3000](http://localhost:3000) in a desktop browser.
 | Canvas 2D for card faces | Pure drawing functions with no Three.js dependency — testable and DPR-aware |
 | Spring physics from scratch | Full control over stiffness and damping feel (~0.7s critically damped settle) |
 | No idle animation | Card is static at rest for clean contrast when audio activates |
-| Honest "downs" section | Genuine product analysis builds trust and shows product thinking |
 
 ---
 
